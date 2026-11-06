@@ -27,6 +27,7 @@ into ``store.add()`` calls and everything downstream is unchanged.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -310,27 +311,39 @@ def discover(
     excluded = {e.strip().lower() for e in (excluded_folders or ()) if e.strip()}
     found: List[Path] = []
 
-    for path in root.rglob("*"):
-        if not path.is_file():
+    # Prune as we descend rather than filtering a full rglob afterwards. A
+    # vault that contains a project (a .venv, a node_modules) holds orders of
+    # magnitude more files than notes -- 25k vs 107 on the vault this was
+    # built against -- and stat-ing all of them on an iCloud-synced folder
+    # stalls the first index for minutes with nothing on screen yet.
+    for dirpath, dirnames, filenames in os.walk(root):
+        here = Path(dirpath)
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in SKIP_DIRECTORIES and not d.startswith(".")
+        ]
+        rel_dir = _relative_to(here, root)
+        if rel_dir is None:
+            dirnames[:] = []
             continue
-        rel = _relative_to(path, root)
-        if rel is None:
-            continue
-        relative = Path(rel)
-        parents = relative.parts[:-1]
-        if any(part in SKIP_DIRECTORIES for part in parents):
-            continue
-        if any(part.startswith(".") for part in parents):
-            continue
-        if path.name.startswith("."):
-            continue
-        if path.suffix.lower() not in INDEXABLE_SUFFIXES:
-            continue
+        parents = Path(rel_dir).parts if rel_dir != "." else ()
         if excluded and parents:
-            top = parents[0].lower()
-            if top in excluded or _sector_of(relative) in excluded:
+            # _sector_of expects a path to a file and reads the sector from its
+            # parent, so a bare directory would normalise to "root". Match on
+            # this directory's own top component instead, same rule applied.
+            top = parents[0]
+            if top.lower() in excluded or _sector_of(Path(top) / "x") in excluded:
+                dirnames[:] = []
                 continue
-        found.append(path)
+
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            path = here / name
+            if path.suffix.lower() not in INDEXABLE_SUFFIXES:
+                continue
+            found.append(path)
     return sorted(found)
 
 

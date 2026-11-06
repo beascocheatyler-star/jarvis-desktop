@@ -8,3 +8,8 @@ dist/
 data/
 .env
 .DS_Store
+build.log
+
+# Empty repo left behind by a GitHub Desktop "create repository" that was
+# never used. Nested .git dirs become broken submodule refs if committed.
+jarvis-desktop/

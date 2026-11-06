@@ -35,6 +35,18 @@ fi
 echo "Building ${APP_NAME}.app…"
 rm -rf build "dist/${APP_NAME}.app"
 
+# The sentence-transformers backend is optional. If it is installed, it has to
+# be bundled explicitly -- PyInstaller cannot see the model/config files torch
+# and transformers load by path at runtime, so a bundle built without this
+# starts fine and then fails on the first index, which looks like a hang.
+ST_ARGS=""
+if "$VENV/bin/python" -c "import sentence_transformers" 2>/dev/null; then
+    echo "  …including sentence-transformers (large; adds several minutes)"
+    ST_ARGS="--collect-all sentence_transformers --collect-all transformers"
+    ST_ARGS="$ST_ARGS --collect-all tokenizers --collect-all safetensors"
+    ST_ARGS="$ST_ARGS --collect-all torch --collect-all sklearn --collect-all scipy"
+fi
+
 # --windowed produces a .app rather than a console binary.
 # app/ and web/ are added as data because PyInstaller's import analysis does
 # not see files loaded at runtime by path.
@@ -51,6 +63,7 @@ rm -rf build "dist/${APP_NAME}.app"
     --hidden-import "watchdog.observers.fsevents" \
     --collect-all "flet" \
     --collect-all "flet_desktop" \
+    ${ST_ARGS:-} \
     jarvis.py
 
 if [[ -d "dist/${APP_NAME}.app" ]]; then
